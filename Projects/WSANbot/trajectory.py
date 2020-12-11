@@ -1,52 +1,108 @@
+import matplotlib.pyplot as plt
 import numpy as np
 
 from vectormath import Vector2
 
 
-def calc_target_vector(angle0: float, angle1: float, path_vector: Vector2) -> Vector2:
-    """
-    Calculates the vector to the target w.r.t. the starting point (where angle0 is determined).
+class Trajectory:
 
-    :param angle0: Angle (radians) between the path_vector and the target at point0.
-    :param angle1: Angle (radians) between the path_vector and the target at point1.
-    :param path_vector: Path vector.
-    :return: Target vector.
-    """
-    # Determine the inner angles of the triangle between point0, point1 and target
-    alpha0 = angle0
-    alpha1 = np.pi - angle1
+    def __init__(self, point0=None, point1=None, targets: int = 2):
+        if point0 is None:
+            self.point0 = np.zeros(2)
+        else:
+            self.point0 = point0
+        if point1 is None:
+            self.point1 = np.zeros(2)
+        else:
+            self.point1 = point1
 
-    # Determine path length using the law of sines
-    target_vector_length = path_vector.length * np.sin(alpha1) / np.sin(alpha0 + alpha1)
-    # Create a vector using the length (rho) and the angle w.r.t. the x axis (theta)
-    return Vector2(target_vector_length, path_vector.theta + angle0, polar=True)
+        self.target_coords = np.zeros([targets, 2])
+        self.target_angles = np.zeros([targets, 2])
 
+        self.path_vector = None
+        self.path = None
+        self.get_path()
 
-def calc_target_point(angle0: float, angle1: float, path_vector: Vector2, point0 = None):
-    """
-    Calculates the absolute coordinates of the target in the world using the point0 coordinates.
+    def get_path(self):
+        self.path_vector = Vector2(self.point1 - self.point0)
+        self.path = np.array([self.point0, self.path_vector + self.point0])
+        return self.path
 
-    :param angle0: Angle (radians) between the path_vector and the target at point0.
-    :param angle1: Angle (radians) between the path_vector and the target at point1.
-    :param path_vector: Path vector.
-    :param point0: Point0 where angle0 was determined (to get absolute reference coordinates in the world).
-    :return: Target vector.
-    """
-    target_vector = calc_target_vector(angle0=angle0, angle1=angle1, path_vector=path_vector)
-    if np.ndarray is None:
-        point0 = np.array([0, 0])  # Assume point0 was the origin
-    return np.array([target_vector.x + point0[0], target_vector.y + point0[1]])
+    def set_target_angle(self, target, angle, point_nr):
+        self.target_angles[target][point_nr] = angle
+
+    def get_target_coords(self, target):
+        self.get_path()
+
+        alpha0 = self.target_angles[target][0]
+        alpha1 = np.pi - self.target_angles[target][1]
+
+        # Determine path length using the law of sines
+        target_vector_length = self.path_vector.length * np.sin(alpha1) / np.sin(np.pi - alpha0 - alpha1)
+
+        # Create a vector using the length (rho) and the angle w.r.t. the x axis (theta)
+        target_vector = Vector2(target_vector_length, self.path_vector.theta + alpha0, polar=True)
+
+        self.target_coords[target] = np.array([target_vector.x + self.point0[0], target_vector.y + self.point0[1]])
+        return self.target_coords[target]
+
+    def calculate_remaining_trajectory(self):
+        dest_vector = Vector2(self.target_coords[1][0] - self.point1[0], self.target_coords[1][1] - self.point1[1])
+        t0_vector = Vector2(self.target_coords[0][0] - self.point1[0], self.target_coords[0][1] - self.point1[1])
+
+        t0_angle = dest_vector.angle(t0_vector)
+        print(np.rad2deg(t0_angle))
+
+        dest_path = np.array([self.point1, dest_vector + self.point1])
+        self.t0_path = np.array([self.point1, t0_vector + self.point1])
+        return dest_path
 
 
 if __name__ == '__main__':
-    point0 = np.array([9, -5])  # At this point, the first camera angle was determined
-    point1 = np.array([4, 4])  # At this point, the second camera angle was determined
+    # Set expected points (where bottles are located)
+    t0_expected = np.array([-60, 350])
+    t1_expected = np.array([60, 440])
 
-    path_vector = Vector2(point1 - point0)
-    print(path_vector.theta_deg)
+    # Create trajectory
+    traj = Trajectory(point0=np.array([0, 0]), point1=np.array([-80, 200]), targets=2)
 
-    obj_angle0 = np.deg2rad(-40)  # clockwise wrt the front of the car (aka the direction it is driving)
-    obj_angle1 = np.deg2rad(-112)
+    ## Car starts at point0 [0,0]
 
-    print(calc_target_vector(obj_angle0, obj_angle1, path_vector))  # Expected: (2, 10)
-    print(calc_target_point(obj_angle0, obj_angle1, path_vector, point0))  # Expected: (11, 5)
+    # Set the angles measured by the camera at point0
+    traj.set_target_angle(target=0, angle=np.deg2rad(9.7 - 21.8), point_nr=0)
+    traj.set_target_angle(target=1, angle=np.deg2rad(-7.8 - 21.8), point_nr=0)
+
+    ## now the car will drive towards point1 (located at [-80, 200])
+
+    # Set the angles measured by the camera at point1
+    traj.set_target_angle(0, np.deg2rad(-7.6 - 21.8), 1)
+    traj.set_target_angle(1, np.deg2rad(-30.3 - 21.8), 1)
+
+    # The car can now calculate the exact coordinates of the target bottles
+    t0 = traj.get_target_coords(0)
+    t1 = traj.get_target_coords(1)
+
+    ## The rest of the trajectory calculation still needs to happen here
+
+    ## This is only to plot our results (only for visualization)
+    fig, ax = plt.subplots()  # Create a figure containing a single axes.
+    ax.plot(*t0_expected, marker='o', markersize=7, color="red")  # Actual target points
+    ax.plot(*t1_expected, marker='o', markersize=7, color="red")
+
+    ax.plot(*t0, marker='o', markersize=7, color="green")  # Calculated target points
+    ax.plot(*t1, marker='o', markersize=7, color="green")
+
+    ax.plot(*traj.point0, marker='o', markersize=7, color="blue")  # Measurement points
+    ax.plot(*traj.point1, marker='o', markersize=7, color="blue")
+
+    ax.plot(*zip(*traj.get_path()), linewidth=2)  # Path vector between point0 and poin1
+
+    dest_path = traj.calculate_remaining_trajectory()
+    ax.plot(*zip(*dest_path), linewidth=1, color="magenta", marker="o", markersize='7')
+    ax.plot(*zip(*traj.t0_path), linewidth=1, color="magenta", marker="o", markersize='7')
+    # plt.xlim(-100, 100)  # Set x bounds
+    # plt.ylim(-20, 450)  # Set y bounds
+    plt.gca().set_aspect('equal', adjustable='box')  # Make the axes have equal scales
+    plt.grid(True, which='both')  # Show grid
+
+    plt.show()  # show plot
