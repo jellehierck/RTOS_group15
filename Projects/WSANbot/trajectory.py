@@ -1,5 +1,4 @@
 import logging
-import threading
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,7 +34,7 @@ class DriverSeat:
         ch.setFormatter(formatter)
         cls.logger.addHandler(ch)
 
-    def __init__(self, gopigo: EasyGoPiGo3, point0: np.ndarray = None, point1: np.ndarray = None):
+    def __init__(self, gopigo, point0=None, point1=None):
         if point0 is None:  # Set point0 to the origin if none is given
             point0 = np.array([0, 0])
         if point1 is None:  # Set point1 to a specified point
@@ -52,11 +51,17 @@ class DriverSeat:
         self.logger.info("DriverSeat initialized.")
 
     def start_trajectory(self):
-        self.logger.info("DriverSeat trajectory started.")
+        self.logger.warning("DriverSeat trajectory started.")
+
+        self.logger.info("Current angle: %0.1f" % self.curr_angle)
+        self.logger.info("point0 located at " + str(self.trajectory.point0) + ".")
+        self.logger.info("point1 located at " + str(self.trajectory.point1) + ".")
+
         # --------------------------------------------------------------------------------------
         # Stage 1: Spin on point0 until you find both bottles
         self.logger.warning("Trajectory stage 1 (Spin on point0 until you find both bottles).")
         deg_to_turn = self.curr_angle - self.trajectory.p0_to_p1.theta_deg  # How far the car needs to turn
+
         self.logger.info("Spinning for %0.1f degrees" % deg_to_turn)
         self.gopigo.turn_degrees(degrees=deg_to_turn, blocking=True)  # Rotate the car
 
@@ -72,12 +77,18 @@ class DriverSeat:
         # Store the angles in the internal targets
         self.target_a.set_angle(point_nr=0, point_coordinates=self.trajectory.point0, angle=target_a_angle)
         self.target_b.set_angle(point_nr=0, point_coordinates=self.trajectory.point0, angle=target_b_angle)
+        self.logger.info(
+            "[point0] Bottle A located at %0.1f degrees, bottle B located at %0.1f degrees from the front of the car." % (
+                np.rad2deg(target_a_angle), np.rad2deg(target_b_angle)))
 
         # --------------------------------------------------------------------------------------
         # Stage 2: Drive to point1
+        self.logger.warning("Trajectory stage 2 (Drive to point1).")
         self.gopigo.drive_cm(dist=self.trajectory.p0_to_p1.rho)
+        self.logger.info("Driving for for %0.1f cm." % self.trajectory.p0_to_p1.rho)
 
-        ## Stage 2.5: Record the angle of both bottles in point1 and calculate the rest of the trajectory
+        # Stage 2.5: Record the angle of both bottles in point1 and calculate the rest of the trajectory
+        self.logger.warning("Trajectory stage 2.5 (Record the angle of both bottles in point1).")
         # TODO: Angle recording goes here somehow (replace next two lines)
         target_a_angle = np.deg2rad(-7.6 - 21.8)  # Angle from the front of the car to target A
         target_b_angle = np.deg2rad(-30.3 - 21.8)  # Angle from the front of the car to target B
@@ -85,40 +96,61 @@ class DriverSeat:
         # Store the angles in the internal targets
         self.target_a.set_angle(point_nr=1, point_coordinates=self.trajectory.point1, angle=target_a_angle)
         self.target_b.set_angle(point_nr=1, point_coordinates=self.trajectory.point1, angle=target_b_angle)
+        self.logger.info(
+            "[point1] Bottle A located at %0.1f degrees, bottle B located at %0.1f degrees from the front of the car." % (
+                np.rad2deg(target_a_angle), np.rad2deg(target_b_angle)))
 
         # Calculate trajectory
         self.trajectory.set_targets(target_a=self.target_a.get_coordinates(), target_b=self.target_b.get_coordinates())
+        self.logger.info("Target A located at " + str(self.target_a.get_coordinates()) + ".")
+        self.logger.info("Target B located at " + str(self.target_b.get_coordinates()) + ".")
         self.trajectory.calculate_remaining()
+        self.logger.warning("Trajectory calculated.")
+        self.logger.info("point2 located at " + str(self.trajectory.point2) + ".")
+        self.logger.info("point3 located at " + str(self.trajectory.point3) + ".")
 
         # --------------------------------------------------------------------------------------
-        ## Stage 3: Spin to the correct angle for point2 (next to the first target bottle)
+        # Stage 3: Spin to the correct angle for point2 (next to the first target bottle)
+        self.logger.warning("Trajectory stage 3 (Spin to the correct angle for point2).")
         deg_to_turn = self.curr_angle - self.trajectory.p1_to_p2.theta_deg  # How far the car needs to turn
+
+        self.logger.info("Spinning for %0.1f degrees" % deg_to_turn)
         self.gopigo.turn_degrees(degrees=deg_to_turn, blocking=True)  # Rotate the car
 
         self.curr_angle = self.curr_angle - deg_to_turn  # Update the current angle after the spin
+        self.logger.info("Current angle: %0.1f" % self.curr_angle)
 
         # --------------------------------------------------------------------------------------
-        ## Stage 4: Drive to point2
+        # Stage 4: Drive to point2
+        self.logger.warning("Trajectory stage 4 (Drive to point2).")
         self.gopigo.drive_cm(dist=self.trajectory.p1_to_p2.rho)
+        self.logger.info("Driving for for %0.1f cm." % self.trajectory.p1_to_p2.rho)
 
         # --------------------------------------------------------------------------------------
-        ## Stage 5: Spin to the correct angle for point3 (10 cm before the seconds target bottle)
+        # Stage 5: Spin to the correct angle for point3 (10 cm before the seconds target bottle)
+        self.logger.warning("Trajectory stage 4 (Spin to the correct angle for point3).")
         deg_to_turn = self.curr_angle - self.trajectory.p2_to_p3.theta_deg  # How far the car needs to turn
+
+        self.logger.info("Spinning for %0.1f degrees" % deg_to_turn)
         self.gopigo.turn_degrees(degrees=deg_to_turn, blocking=True)  # Rotate the car
 
         self.curr_angle = self.curr_angle - deg_to_turn  # Update the current angle after the spin
+        self.logger.info("Current angle: %0.1f" % self.curr_angle)
 
         # --------------------------------------------------------------------------------------
-        ## Stage 6: Drive to point3
+        # Stage 6: Drive to point3
+        self.logger.warning("Trajectory stage 6 (Drive to point3).")
         self.gopigo.drive_cm(dist=self.trajectory.p2_to_p3.rho)
+        self.logger.info("Driving for for %0.1f cm." % self.trajectory.p2_to_p3.rho)
+
+        self.logger.warning("DONE.")
 
 
 class Trajectory:
     DISTANCE_FROM_TARGET_B = 10  # Stop 10 cm from target_b
     TARGET_A_ANGLE_SCALE = 1.3  # This angle offset will make the robot not collide with target_a but drive around
 
-    def __init__(self, point0: np.ndarray, point1: np.ndarray, target_a: np.ndarray = None,
-                 target_b: np.ndarray = None):
+    def __init__(self, point0, point1, target_a=None, target_b=None):
         """
         Initialize the trajectory. The trajectory needs to receive its first two points. It is optional to provide the
         target points, they can also be added later. The trajectory will calculate the remaining points on the
@@ -153,12 +185,12 @@ class Trajectory:
         self.p1_to_p2_path = None
         self.p2_to_p3_path = None
 
-    def set_targets(self, target_a: np.ndarray, target_b: np.ndarray):
+    def set_targets(self, target_a, target_b):
         """Set the target coordinates."""
         self.target_a = target_a
         self.target_b = target_b
 
-    def calculate_remaining(self) -> None:
+    def calculate_remaining(self):
         """Calculate the remaining points and vectors based on point0, point1, target_a and target_b."""
         # target_a and target_b first need to be calculated before this function can be executed
         if self.target_a is None or self.target_b is None:
@@ -189,7 +221,7 @@ class Trajectory:
         self.point3 = self.p2_to_p3 + self.point2  # Store the coordinates of p3
         self.p2_to_p3_path = np.array([self.point2, self.p2_to_p3 + self.point2])  # Store the path from p2 to p3
 
-    def get_next_vector(self, current_point) -> Vector2:
+    def get_next_vector(self, current_point):
         """Return the vector to the next point based on which point you are currently in."""
         if current_point == 0:
             return self.p0_to_p1
@@ -210,7 +242,7 @@ class Target:
         self.angle_in_p1 = None
         self.coordinates = None
 
-    def set_angle(self, point_nr: int, point_coordinates: np.ndarray, angle: float):
+    def set_angle(self, point_nr, point_coordinates, angle):
         if point_nr == 0:
             self.point0 = point_coordinates
             self.angle_in_p0 = angle
@@ -244,56 +276,56 @@ if __name__ == '__main__':
     driverseat = DriverSeat(gopigo=gopigo)
     driverseat.start_trajectory()
 
-if False:
-    # Set expected points (where bottles are located)
-    t0_expected = np.array([-60, 350])
-    t1_expected = np.array([60, 440])
-
-    # Create trajectory
-    point0 = np.array([0, 0])
-    point1 = np.array([-80, 200])  # TODO: Determine point1 when spinning
-    target_a = Target()
-    target_b = Target()
-    trajectory = Trajectory(point0, point1)
-
-    ## Car starts at point0 [0,0]
-
-    # Set the angles measured by the camera at point0
-    target_a.set_angle(point_nr=0, point_coordinates=point0, angle=np.deg2rad(9.7 - 21.8))
-    target_b.set_angle(point_nr=0, point_coordinates=point0, angle=np.deg2rad(-7.8 - 21.8))
-
-    ## now the car will drive towards point1 (located at [-80, 200])
-
-    # Set the angles measured by the camera at point1
-    target_a.set_angle(point_nr=1, point_coordinates=point1, angle=np.deg2rad(-7.6 - 21.8))
-    target_b.set_angle(point_nr=1, point_coordinates=point1, angle=np.deg2rad(-30.3 - 21.8))
-
-    # The car can now calculate the exact coordinates of the target bottles
-    target_a_coordinates = target_a.get_coordinates()
-    target_b_coordinates = target_b.get_coordinates()
-
-    ## The rest of the trajectory calculation happens here
-
-    trajectory.set_targets(target_a=target_a_coordinates, target_b=target_b_coordinates)
-    trajectory.calculate_remaining()
-
-    ## This is only to plot our results (only for visualization)
-    fig, ax = plt.subplots()  # Create a figure containing a single axes.
-    ax.plot(*t0_expected, marker='o', markersize=7, color="red")  # Actual target points
-    ax.plot(*t1_expected, marker='o', markersize=7, color="red")
-
-    ax.plot(*target_a_coordinates, marker='o', markersize=7, color="green")  # Calculated target points
-    ax.plot(*target_b_coordinates, marker='o', markersize=7, color="green")
-
-    ax.plot(*point0, marker='o', markersize=7, color="blue")  # Measurement points
-    ax.plot(*point1, marker='o', markersize=7, color="blue")
-
-    ax.plot(*zip(*trajectory.p0_to_p1_path), linewidth=2)  # Path vector between point0 and point1
-    ax.plot(*zip(*trajectory.p1_to_p2_path), linewidth=1, color="magenta", marker="o", markersize='7')
-    ax.plot(*zip(*trajectory.p2_to_p3_path), linewidth=1, color="magenta", marker="o", markersize='7')
-    plt.xlim(-100, 100)  # Set x bounds
-    plt.ylim(-20, 450)  # Set y bounds
-    plt.gca().set_aspect('equal', adjustable='box')  # Make the axes have equal scales
-    plt.grid(True, which='both')  # Show grid
-
-    plt.show()  # show plot
+# if False:
+#     # Set expected points (where bottles are located)
+#     t0_expected = np.array([-60, 350])
+#     t1_expected = np.array([60, 440])
+#
+#     # Create trajectory
+#     point0 = np.array([0, 0])
+#     point1 = np.array([-80, 200])  # TODO: Determine point1 when spinning
+#     target_a = Target()
+#     target_b = Target()
+#     trajectory = Trajectory(point0, point1)
+#
+#     ## Car starts at point0 [0,0]
+#
+#     # Set the angles measured by the camera at point0
+#     target_a.set_angle(point_nr=0, point_coordinates=point0, angle=np.deg2rad(9.7 - 21.8))
+#     target_b.set_angle(point_nr=0, point_coordinates=point0, angle=np.deg2rad(-7.8 - 21.8))
+#
+#     ## now the car will drive towards point1 (located at [-80, 200])
+#
+#     # Set the angles measured by the camera at point1
+#     target_a.set_angle(point_nr=1, point_coordinates=point1, angle=np.deg2rad(-7.6 - 21.8))
+#     target_b.set_angle(point_nr=1, point_coordinates=point1, angle=np.deg2rad(-30.3 - 21.8))
+#
+#     # The car can now calculate the exact coordinates of the target bottles
+#     target_a_coordinates = target_a.get_coordinates()
+#     target_b_coordinates = target_b.get_coordinates()
+#
+#     ## The rest of the trajectory calculation happens here
+#
+#     trajectory.set_targets(target_a=target_a_coordinates, target_b=target_b_coordinates)
+#     trajectory.calculate_remaining()
+#
+#     ## This is only to plot our results (only for visualization)
+#     fig, ax = plt.subplots()  # Create a figure containing a single axes.
+#     ax.plot(*t0_expected, marker='o', markersize=7, color="red")  # Actual target points
+#     ax.plot(*t1_expected, marker='o', markersize=7, color="red")
+#
+#     ax.plot(*target_a_coordinates, marker='o', markersize=7, color="green")  # Calculated target points
+#     ax.plot(*target_b_coordinates, marker='o', markersize=7, color="green")
+#
+#     ax.plot(*point0, marker='o', markersize=7, color="blue")  # Measurement points
+#     ax.plot(*point1, marker='o', markersize=7, color="blue")
+#
+#     ax.plot(*zip(*trajectory.p0_to_p1_path), linewidth=2)  # Path vector between point0 and point1
+#     ax.plot(*zip(*trajectory.p1_to_p2_path), linewidth=1, color="magenta", marker="o", markersize='7')
+#     ax.plot(*zip(*trajectory.p2_to_p3_path), linewidth=1, color="magenta", marker="o", markersize='7')
+#     plt.xlim(-100, 100)  # Set x bounds
+#     plt.ylim(-20, 450)  # Set y bounds
+#     plt.gca().set_aspect('equal', adjustable='box')  # Make the axes have equal scales
+#     plt.grid(True, which='both')  # Show grid
+#
+#     plt.show()  # show plot
